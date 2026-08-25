@@ -1,0 +1,16 @@
+services:
+  localshare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: localshare
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - ./uploads:/app/uploads
+      - ./data:/app/data
