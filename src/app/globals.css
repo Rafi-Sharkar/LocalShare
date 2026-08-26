@@ -16,17 +16,24 @@
   --card-border: rgba(0, 0, 0, 0.08);
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  scroll-behavior: smooth;
+}
+
 body {
   color: var(--foreground);
   background-color: var(--background);
   min-height: 100vh;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   overflow-x: hidden;
   background-image: 
     radial-gradient(at 10% 10%, rgba(20, 184, 166, 0.07) 0px, transparent 50%),
     radial-gradient(at 90% 20%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
     radial-gradient(at 50% 90%, rgba(14, 165, 233, 0.06) 0px, transparent 50%);
   background-attachment: fixed;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Glassmorphism utility */
@@ -41,16 +48,27 @@ body {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.glass-card-hover:hover {
-  border-color: rgba(20, 184, 166, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(20, 184, 166, 0.15);
+@media (hover: hover) and (pointer: fine) {
+  .glass-card-hover:hover {
+    border-color: rgba(20, 184, 166, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(20, 184, 166, 0.15);
+  }
 }
 
-/* Custom Scrollbar */
+/* Hide scrollbar but keep functionality */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom Scrollbar for desktop */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {

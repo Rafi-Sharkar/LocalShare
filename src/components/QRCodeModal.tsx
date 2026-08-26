@@ -1,16 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import {
   X,
   Copy,
   Check,
   Smartphone,
-  Laptop,
-  Wifi,
-  ExternalLink,
-  Info,
   ShieldCheck,
 } from 'lucide-react';
 
@@ -39,7 +35,6 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   const [selectedUrl, setSelectedUrl] = useState<string>(primaryUrl);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (primaryUrl) {
@@ -51,7 +46,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
     if (!isOpen || !selectedUrl) return;
 
     QRCode.toDataURL(selectedUrl, {
-      width: 280,
+      width: 260,
       margin: 2,
       color: {
         dark: '#0f172a',
@@ -75,57 +70,64 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-6 sm:p-8 text-slate-100 animate-slide-up">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl bg-slate-900 border border-slate-700/80 shadow-2xl p-5 sm:p-8 text-slate-100 animate-slide-up"
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label="Close modal"
+          className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 active:scale-95 transition-all"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Title & Description */}
-        <div className="text-center mb-6">
-          <div className="inline-flex p-3 rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/20 mb-3">
-            <Smartphone className="w-6 h-6 animate-bounce" />
+        <div className="text-center mb-4 sm:mb-6">
+          <div className="inline-flex p-2.5 sm:p-3 rounded-2xl bg-teal-500/10 text-teal-400 border border-teal-500/20 mb-2 sm:mb-3">
+            <Smartphone className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+          <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-white">
             Connect Any Device on Wi-Fi
           </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Scan this QR code with your phone camera or enter the URL on any laptop / tablet on the same Wi-Fi.
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-md mx-auto">
+            Scan this QR code with your phone camera or open the address on another computer on the same Wi-Fi.
           </p>
         </div>
 
         {/* QR Code Container */}
         <div className="flex flex-col items-center justify-center">
-          <div className="relative p-4 bg-white rounded-2xl shadow-xl shadow-teal-500/10 border-4 border-teal-500/20 flex items-center justify-center">
+          <div className="relative p-3 sm:p-4 bg-white rounded-2xl shadow-xl shadow-teal-500/10 border-4 border-teal-500/20 flex items-center justify-center">
             {qrDataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={qrDataUrl}
                 alt="Wi-Fi Connection QR Code"
-                className="w-52 h-52 sm:w-56 sm:h-56 rounded-lg"
+                className="w-44 h-44 sm:w-56 sm:h-56 rounded-lg"
               />
             ) : (
-              <div className="w-52 h-52 flex items-center justify-center text-slate-400 text-sm">
+              <div className="w-44 h-44 sm:w-56 sm:h-56 flex items-center justify-center text-slate-400 text-sm">
                 Generating QR...
               </div>
             )}
           </div>
 
           {/* URL Display & Copy Button */}
-          <div className="w-full mt-6 flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-slate-800">
+          <div className="w-full mt-4 sm:mt-6 flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl bg-slate-950 border border-slate-800">
             <input
               type="text"
               readOnly
               value={selectedUrl}
-              className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm font-mono text-teal-300 outline-none select-all"
+              className="flex-1 bg-transparent px-2.5 py-1.5 text-xs sm:text-sm font-mono text-teal-300 outline-none select-all min-w-0"
             />
             <button
               onClick={handleCopy}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold active:scale-95 transition-all flex-shrink-0 ${
                 copied
                   ? 'bg-emerald-600 text-white'
                   : 'bg-teal-600 hover:bg-teal-500 text-white'
@@ -148,7 +150,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
 
         {/* Network Interface Switcher (If multiple exist) */}
         {interfaces.length > 1 && (
-          <div className="mt-4 pt-4 border-t border-slate-800">
+          <div className="mt-4 pt-3 border-t border-slate-800">
             <label className="block text-xs font-medium text-slate-400 mb-2">
               Select Network Adapter:
             </label>
@@ -157,9 +159,9 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
                 <button
                   key={net.address}
                   onClick={() => setSelectedUrl(net.url)}
-                  className={`text-left p-2.5 rounded-lg text-xs border transition-all ${
+                  className={`text-left p-2.5 rounded-xl text-xs border transition-all active:scale-[0.98] ${
                     selectedUrl === net.url
-                      ? 'border-teal-500 bg-teal-500/10 text-teal-300 font-semibold'
+                      ? 'border-teal-500 bg-teal-500/10 text-teal-300 font-semibold shadow-sm'
                       : 'border-slate-800 hover:border-slate-700 bg-slate-950/50 text-slate-300'
                   }`}
                 >
@@ -181,12 +183,12 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
         )}
 
         {/* Quick Instructions */}
-        <div className="mt-5 p-3 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-indigo-300 text-xs flex items-start gap-2.5">
+        <div className="mt-4 p-3 rounded-2xl bg-indigo-950/30 border border-indigo-500/20 text-indigo-300 text-xs flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-indigo-400" />
           <div>
             <p className="font-medium text-indigo-200">Zero Internet Required</p>
             <p className="text-slate-400 text-[11px] mt-0.5">
-              Transfers happen directly over your local Wi-Fi at maximum router speeds without passing through any external servers.
+              Transfers happen directly over your local Wi-Fi router at maximum speed without passing through any external servers.
             </p>
           </div>
         </div>

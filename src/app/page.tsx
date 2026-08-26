@@ -211,13 +211,13 @@ export default function HomePage() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
         {/* Storage Stats Banner */}
         <StorageStats stats={stats} />
 
         {/* Tab 1: Files Sharing */}
         {activeTab === 'files' && (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-5 sm:space-y-6 animate-fade-in">
             <FileUploader
               onUploadSuccess={fetchFiles}
               showToast={showToast}
@@ -262,8 +262,8 @@ export default function HomePage() {
       {/* Toast Notifications */}
       <Toast toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Footer */}
-      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-500">
+      {/* Footer (hidden on small mobile or cleanly tucked above bottom nav) */}
+      <footer className="border-t border-white/5 py-4 sm:py-6 text-center text-xs text-slate-500 hidden sm:block">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>LocalShare — High-speed peer-to-peer Wi-Fi file & text sharing</span>
           <span className="font-mono text-[11px] text-teal-400/80">
