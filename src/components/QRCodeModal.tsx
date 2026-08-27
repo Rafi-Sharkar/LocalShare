@@ -151,8 +151,8 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
         {/* Network Interface Switcher (If multiple exist) */}
         {interfaces.length > 1 && (
           <div className="mt-4 pt-3 border-t border-slate-800">
-            <label className="block text-xs font-medium text-slate-400 mb-2">
-              Select Network Adapter:
+            <label className="block text-xs font-semibold text-slate-300 mb-2">
+              Select Wi-Fi / Network Adapter (Tap to switch QR):
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {interfaces.map((net) => (
@@ -161,19 +161,19 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
                   onClick={() => setSelectedUrl(net.url)}
                   className={`text-left p-2.5 rounded-xl text-xs border transition-all active:scale-[0.98] ${
                     selectedUrl === net.url
-                      ? 'border-teal-500 bg-teal-500/10 text-teal-300 font-semibold shadow-sm'
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-950/50 text-slate-300'
+                      ? 'border-teal-400 bg-teal-500/20 text-teal-200 font-semibold shadow-md shadow-teal-500/10'
+                      : 'border-slate-800 hover:border-slate-700 bg-slate-950/60 text-slate-400'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="truncate font-medium">{net.name}</span>
                     {net.isRecommended && (
-                      <span className="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded">
-                        Wi-Fi
+                      <span className="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded font-bold">
+                        Recommended
                       </span>
                     )}
                   </div>
-                  <div className="font-mono text-[11px] text-slate-400 mt-0.5">
+                  <div className="font-mono text-[11px] text-teal-400/80 mt-0.5">
                     {net.address}
                   </div>
                 </button>
@@ -182,8 +182,20 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
           </div>
         )}
 
+        {/* Troubleshooting Box */}
+        <div className="mt-4 p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 text-amber-300 text-xs space-y-1.5">
+          <p className="font-semibold text-amber-200 flex items-center gap-1.5">
+            <span>📱 Can't connect from your phone?</span>
+          </p>
+          <ul className="text-slate-300 text-[11px] space-y-1 list-disc list-inside">
+            <li>Ensure phone is connected to the <strong>same Wi-Fi router</strong> (not cellular 4G/5G data).</li>
+            <li>If your PC has multiple adapters, tap the other adapter buttons above to switch the QR code.</li>
+            <li>On Windows: Ensure Windows Firewall allows <strong>Node.js</strong> or port <strong>3000</strong> on Private networks.</li>
+          </ul>
+        </div>
+
         {/* Quick Instructions */}
-        <div className="mt-4 p-3 rounded-2xl bg-indigo-950/30 border border-indigo-500/20 text-indigo-300 text-xs flex items-start gap-2.5">
+        <div className="mt-3 p-3 rounded-2xl bg-indigo-950/30 border border-indigo-500/20 text-indigo-300 text-xs flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0 text-indigo-400" />
           <div>
             <p className="font-medium text-indigo-200">Zero Internet Required</p>
