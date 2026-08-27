@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import mime from 'mime-types';
 import { broadcastEvent } from './events';
-import { FileMetadata, SharedText, StorageStats, formatBytes } from './types';
+import { FileMetadata, SharedText, StorageStats, formatBytes, normalizeMac } from './types';
 
 export * from './types';
 
@@ -30,7 +30,8 @@ function ensureDirs() {
 
 export function detectDevice(userAgent?: string | null): string {
   if (!userAgent) return 'Unknown Device';
-  if (/iPhone|iPad|iPod/i.test(userAgent)) return 'iOS Device';
+  if (/iPhone/i.test(userAgent)) return 'iOS Device';
+  if (/iPad/i.test(userAgent)) return 'iPad';
   if (/Android/i.test(userAgent)) return 'Android Device';
   if (/Macintosh|Mac OS X/i.test(userAgent)) return 'macOS';
   if (/Windows NT/i.test(userAgent)) return 'Windows PC';
@@ -118,7 +119,14 @@ function writeMetadata(data: FileMetadata[]): void {
   fs.writeFileSync(FILES_META_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-export function getAllFiles(): FileMetadata[] {
+/**
+ * Retrieve all files accessible by client MAC.
+ * If clientMac is provided:
+ * - Returns public files (targetMac is unset or 'all')
+ * - Returns files where clientMac is recipient (targetMac === clientMac)
+ * - Returns files where clientMac is sender (uploaderMac === clientMac)
+ */
+export function getAllFiles(clientMac?: string): FileMetadata[] {
   const files = readMetadata();
   const existingFiles = files.filter((f) => {
     const filePath = path.join(UPLOADS_DIR, f.name);
@@ -127,28 +135,73 @@ export function getAllFiles(): FileMetadata[] {
   if (existingFiles.length !== files.length) {
     writeMetadata(existingFiles);
   }
-  return existingFiles.sort(
+
+  const sorted = existingFiles.sort(
     (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
   );
+
+  if (!clientMac) {
+    return sorted;
+  }
+
+  const cleanClientMac = normalizeMac(clientMac).toUpperCase();
+
+  return sorted.filter((file) => {
+    // If file is not private / targeted to everyone
+    if (!file.isPrivate || !file.targetMac || file.targetMac.toLowerCase() === 'all') {
+      return true;
+    }
+    const cleanTargetMac = normalizeMac(file.targetMac).toUpperCase();
+    const cleanUploaderMac = normalizeMac(file.uploaderMac).toUpperCase();
+
+    // Check if client is target recipient or sender
+    return cleanTargetMac === cleanClientMac || cleanUploaderMac === cleanClientMac;
+  });
 }
 
-export function getFileById(id: string): {
+export function getFileById(
+  id: string,
+  clientMac?: string
+): {
   metadata: FileMetadata | null;
   filePath: string | null;
+  isForbidden?: boolean;
 } {
-  const files = getAllFiles();
-  const file = files.find((f) => f.id === id);
+  const allFiles = readMetadata();
+  const file = allFiles.find((f) => f.id === id);
   if (!file) return { metadata: null, filePath: null };
+
   const filePath = path.join(UPLOADS_DIR, file.name);
   if (!fs.existsSync(filePath)) return { metadata: null, filePath: null };
+
+  // Check 1-to-1 privacy access
+  if (file.isPrivate && file.targetMac && file.targetMac.toLowerCase() !== 'all') {
+    if (!clientMac) {
+      return { metadata: file, filePath, isForbidden: true };
+    }
+    const cleanClientMac = normalizeMac(clientMac).toUpperCase();
+    const cleanTargetMac = normalizeMac(file.targetMac).toUpperCase();
+    const cleanUploaderMac = normalizeMac(file.uploaderMac).toUpperCase();
+
+    if (cleanTargetMac !== cleanClientMac && cleanUploaderMac !== cleanClientMac) {
+      return { metadata: file, filePath, isForbidden: true };
+    }
+  }
+
   return { metadata: file, filePath };
 }
 
 export async function saveUploadedFile(
   fileBuffer: Buffer,
   originalFilename: string,
-  clientIp = '127.0.0.1',
-  userAgent = ''
+  options?: {
+    clientIp?: string;
+    userAgent?: string;
+    uploaderMac?: string;
+    uploaderName?: string;
+    targetMac?: string;
+    targetName?: string;
+  }
 ): Promise<FileMetadata> {
   ensureDirs();
   const id = crypto.randomUUID();
@@ -165,6 +218,12 @@ export async function saveUploadedFile(
     mime.lookup(originalFilename) || 'application/octet-stream';
   const category = getFileCategory(detectedMime, originalFilename);
 
+  const clientIp = options?.clientIp || '127.0.0.1';
+  const userAgent = options?.userAgent || '';
+  const uploaderMac = options?.uploaderMac ? normalizeMac(options.uploaderMac) : undefined;
+  const targetMac = options?.targetMac && options.targetMac !== 'all' ? normalizeMac(options.targetMac) : undefined;
+  const isPrivate = Boolean(targetMac && targetMac !== 'all');
+
   const metadata: FileMetadata = {
     id,
     name: storedFilename,
@@ -175,6 +234,11 @@ export async function saveUploadedFile(
     uploadedAt: new Date().toISOString(),
     uploaderIp: clientIp,
     uploaderDevice: detectDevice(userAgent),
+    uploaderMac,
+    uploaderName: options?.uploaderName,
+    targetMac,
+    targetName: options?.targetName,
+    isPrivate,
     downloadUrl: `/api/files/${id}`,
     previewUrl: `/api/files/${id}?preview=true`,
   };
@@ -187,11 +251,23 @@ export async function saveUploadedFile(
   return metadata;
 }
 
-export async function deleteFileById(id: string): Promise<boolean> {
+export async function deleteFileById(id: string, clientMac?: string): Promise<{ success: boolean; forbidden?: boolean }> {
   ensureDirs();
   const files = readMetadata();
   const target = files.find((f) => f.id === id);
-  if (!target) return false;
+  if (!target) return { success: false };
+
+  // If private, only sender or target can delete
+  if (target.isPrivate && target.targetMac && target.targetMac.toLowerCase() !== 'all') {
+    if (clientMac) {
+      const cleanClient = normalizeMac(clientMac).toUpperCase();
+      const cleanTarget = normalizeMac(target.targetMac).toUpperCase();
+      const cleanUploader = normalizeMac(target.uploaderMac).toUpperCase();
+      if (cleanClient !== cleanTarget && cleanClient !== cleanUploader) {
+        return { success: false, forbidden: true };
+      }
+    }
+  }
 
   const filePath = path.join(UPLOADS_DIR, target.name);
   if (fs.existsSync(filePath)) {
@@ -206,18 +282,33 @@ export async function deleteFileById(id: string): Promise<boolean> {
   writeMetadata(filtered);
 
   broadcastEvent('file:deleted', { id });
-  return true;
+  return { success: true };
 }
 
 // Text / Note Sharing Store
-export function getAllTexts(): SharedText[] {
+export function getAllTexts(clientMac?: string): SharedText[] {
   ensureDirs();
   try {
     const raw = fs.readFileSync(TEXTS_FILE, 'utf-8');
     const texts: SharedText[] = JSON.parse(raw);
-    return texts.sort(
+    const sorted = texts.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+
+    if (!clientMac) {
+      return sorted;
+    }
+
+    const cleanClientMac = normalizeMac(clientMac).toUpperCase();
+
+    return sorted.filter((text) => {
+      if (!text.isPrivate || !text.targetMac || text.targetMac.toLowerCase() === 'all') {
+        return true;
+      }
+      const cleanTargetMac = normalizeMac(text.targetMac).toUpperCase();
+      const cleanCreatorMac = normalizeMac(text.creatorMac).toUpperCase();
+      return cleanTargetMac === cleanClientMac || cleanCreatorMac === cleanClientMac;
+    });
   } catch {
     return [];
   }
@@ -226,11 +317,23 @@ export function getAllTexts(): SharedText[] {
 export function saveSharedText(
   content: string,
   title?: string,
-  clientIp = '127.0.0.1',
-  userAgent = ''
+  options?: {
+    clientIp?: string;
+    userAgent?: string;
+    creatorMac?: string;
+    creatorName?: string;
+    targetMac?: string;
+    targetName?: string;
+  }
 ): SharedText {
   ensureDirs();
   const id = crypto.randomUUID();
+  const clientIp = options?.clientIp || '127.0.0.1';
+  const userAgent = options?.userAgent || '';
+  const creatorMac = options?.creatorMac ? normalizeMac(options.creatorMac) : undefined;
+  const targetMac = options?.targetMac && options.targetMac !== 'all' ? normalizeMac(options.targetMac) : undefined;
+  const isPrivate = Boolean(targetMac && targetMac !== 'all');
+
   const textItem: SharedText = {
     id,
     title: title?.trim() || undefined,
@@ -238,6 +341,11 @@ export function saveSharedText(
     createdAt: new Date().toISOString(),
     creatorIp: clientIp,
     creatorDevice: detectDevice(userAgent),
+    creatorMac,
+    creatorName: options?.creatorName,
+    targetMac,
+    targetName: options?.targetName,
+    isPrivate,
   };
 
   const texts = getAllTexts();
@@ -259,15 +367,19 @@ export function deleteSharedText(id: string): boolean {
   return true;
 }
 
-export function getStorageStats(): StorageStats {
-  const files = getAllFiles();
-  const texts = getAllTexts();
+export function getStorageStats(clientMac?: string): StorageStats {
+  const files = getAllFiles(clientMac);
+  const texts = getAllTexts(clientMac);
   const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+  const privateFilesCount = files.filter((f) => f.isPrivate).length;
+  const publicFilesCount = files.filter((f) => !f.isPrivate).length;
 
   return {
     totalFiles: files.length,
     totalBytes,
     formattedTotalSize: formatBytes(totalBytes),
     totalTexts: texts.length,
+    privateFilesCount,
+    publicFilesCount,
   };
 }

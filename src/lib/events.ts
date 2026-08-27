@@ -19,7 +19,8 @@ export type EventType =
   | 'file:deleted'
   | 'text:created'
   | 'text:deleted'
-  | 'storage:updated';
+  | 'storage:updated'
+  | 'device:updated';
 
 export function broadcastEvent(type: EventType, data?: unknown) {
   eventBus.emit('change', { type, data, timestamp: Date.now() });

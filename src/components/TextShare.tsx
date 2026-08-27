@@ -10,15 +10,27 @@ import {
   Clipboard,
   Laptop,
   Smartphone,
+  Tablet,
   Sparkles,
+  Lock,
+  Globe,
+  ChevronDown,
+  CheckCircle2,
 } from 'lucide-react';
-import { SharedText } from '@/lib/types';
+import { SharedText, Device, isValidMac, normalizeMac } from '@/lib/types';
 
 interface TextShareProps {
   texts: SharedText[];
-  onAddText: (content: string, title?: string) => Promise<void>;
+  onAddText: (
+    content: string,
+    title?: string,
+    options?: { targetMac?: string; targetName?: string }
+  ) => Promise<void>;
   onDeleteText: (id: string) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  myDevice: Device | null;
+  activeDevices: Device[];
+  selectedTargetDevice?: { mac: string; name: string } | null;
 }
 
 export const TextShare: React.FC<TextShareProps> = ({
@@ -26,11 +38,26 @@ export const TextShare: React.FC<TextShareProps> = ({
   onAddText,
   onDeleteText,
   showToast,
+  myDevice,
+  activeDevices,
+  selectedTargetDevice,
 }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Local target selector state
+  const [targetRecipient, setTargetRecipient] = useState<{ mac: string; name: string } | null>(
+    selectedTargetDevice || null
+  );
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [customMacInput, setCustomMacInput] = useState('');
+  const [customNameInput, setCustomNameInput] = useState('');
+
+  const otherDevices = activeDevices.filter(
+    (d) => myDevice?.mac && d.mac !== myDevice.mac
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,10 +65,14 @@ export const TextShare: React.FC<TextShareProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onAddText(content, title);
+      await onAddText(content, title, {
+        targetMac: targetRecipient?.mac,
+        targetName: targetRecipient?.name,
+      });
       setContent('');
       setTitle('');
-      showToast('Note shared successfully!', 'success');
+      const targetDesc = targetRecipient ? `to ${targetRecipient.name}` : 'to everyone';
+      showToast(`Note shared ${targetDesc}!`, 'success');
     } catch {
       showToast('Failed to share note', 'error');
     } finally {
@@ -81,11 +112,29 @@ export const TextShare: React.FC<TextShareProps> = ({
     );
   };
 
-  const getDeviceIcon = (device: string) => {
-    if (/iOS|Android/i.test(device)) {
+  const getDeviceIcon = (deviceStr?: string) => {
+    if (!deviceStr) return <Laptop className="w-3.5 h-3.5 text-slate-400" />;
+    if (/iPhone|Android/i.test(deviceStr)) {
       return <Smartphone className="w-3.5 h-3.5 text-slate-400" />;
     }
+    if (/iPad/i.test(deviceStr)) {
+      return <Tablet className="w-3.5 h-3.5 text-slate-400" />;
+    }
     return <Laptop className="w-3.5 h-3.5 text-slate-400" />;
+  };
+
+  const handleApplyCustomMac = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isValidMac(customMacInput)) {
+      showToast('Please enter a valid MAC address', 'error');
+      return;
+    }
+    const clean = normalizeMac(customMacInput);
+    setTargetRecipient({
+      mac: clean,
+      name: customNameInput.trim() || `Device (${clean.slice(-5)})`,
+    });
+    setIsPickerOpen(false);
   };
 
   return (
@@ -95,21 +144,103 @@ export const TextShare: React.FC<TextShareProps> = ({
         onSubmit={handleSubmit}
         className="glass-card rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl space-y-3 sm:space-y-4"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold text-white min-w-0">
             <Sparkles className="w-4 h-4 text-teal-400 flex-shrink-0" />
-            <span className="truncate">Share Text / Clipboard</span>
+            <span className="truncate">Share Text / Quick Note</span>
           </div>
 
-          <button
-            type="button"
-            onClick={handlePasteFromClipboard}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-medium border border-white/5 shadow-sm transition-all flex-shrink-0"
-          >
-            <Clipboard className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden xs:inline">Paste</span>
-            <span className="xs:hidden">Paste</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Recipient Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsPickerOpen(!isPickerOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                  targetRecipient
+                    ? 'bg-teal-500/20 text-teal-300 border-teal-500/40'
+                    : 'bg-slate-800/90 text-slate-200 border-white/5 hover:bg-slate-700'
+                }`}
+              >
+                {targetRecipient ? (
+                  <>
+                    <Lock className="w-3 h-3 text-teal-400" />
+                    <span className="max-w-[110px] truncate">{targetRecipient.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-3 h-3 text-cyan-400" />
+                    <span>Public LAN</span>
+                  </>
+                )}
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {/* Recipient Popover */}
+              {isPickerOpen && (
+                <div className="absolute right-0 top-full mt-2 w-72 p-3 bg-slate-900 border border-white/15 rounded-2xl shadow-2xl z-50 glass-card animate-fade-in space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetRecipient(null);
+                      setIsPickerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl text-xs ${
+                      !targetRecipient ? 'bg-teal-500/20 text-teal-300 font-semibold' : 'text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Everyone (Public LAN)</span>
+                    </div>
+                    {!targetRecipient && <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />}
+                  </button>
+
+                  <div className="border-t border-white/10 pt-2 space-y-1">
+                    <div className="text-[10px] uppercase font-bold text-slate-400 px-1">
+                      Target LAN Device (1-to-1)
+                    </div>
+                    {otherDevices.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 px-1 py-1 italic">
+                        No other online devices found.
+                      </p>
+                    ) : (
+                      otherDevices.map((d) => (
+                        <button
+                          key={d.mac}
+                          type="button"
+                          onClick={() => {
+                            setTargetRecipient(d);
+                            setIsPickerOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs ${
+                            targetRecipient?.mac === d.mac
+                              ? 'bg-teal-500/20 text-teal-300 font-semibold'
+                              : 'text-slate-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="text-left">
+                            <p className="font-medium text-white truncate max-w-[130px]">{d.name}</p>
+                            <p className="font-mono text-[10px] text-slate-400">{d.mac}</p>
+                          </div>
+                          {targetRecipient?.mac === d.mac && <CheckCircle2 className="w-3.5 h-3.5 text-teal-400" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handlePasteFromClipboard}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-medium border border-white/5 shadow-sm transition-all flex-shrink-0"
+            >
+              <Clipboard className="w-3.5 h-3.5 text-teal-400" />
+              <span>Paste</span>
+            </button>
+          </div>
         </div>
 
         <input
@@ -122,7 +253,7 @@ export const TextShare: React.FC<TextShareProps> = ({
 
         <textarea
           rows={4}
-          placeholder="Type or paste any link, text, code snippet, or Wi-Fi password to share instantly with other devices..."
+          placeholder="Type or paste any link, text, code snippet, or Wi-Fi password to share instantly..."
           value={content}
           onChange={(e) => setContent(e.target.value)}
           required
@@ -131,9 +262,14 @@ export const TextShare: React.FC<TextShareProps> = ({
 
         <div className="flex items-center justify-between pt-1 gap-2">
           <div className="text-[11px] sm:text-xs text-slate-400 min-w-0 truncate">
-            {content.length > 0 && (
+            {targetRecipient ? (
+              <span className="text-teal-300 flex items-center gap-1">
+                <Lock className="w-3 h-3" />
+                <span>1-to-1 for {targetRecipient.name} ({targetRecipient.mac.slice(-5)})</span>
+              </span>
+            ) : (
               <span>
-                {content.length} chars • {content.trim().split(/\s+/).filter(Boolean).length} words
+                {content.length > 0 && `${content.length} chars • `}Public note
               </span>
             )}
           </div>
@@ -144,7 +280,7 @@ export const TextShare: React.FC<TextShareProps> = ({
             className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold shadow-md shadow-teal-500/25 transition-all active:scale-95 flex-shrink-0"
           >
             <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>{isSubmitting ? 'Sharing...' : 'Share Note'}</span>
+            <span>{isSubmitting ? 'Sharing...' : targetRecipient ? 'Send 1-to-1' : 'Share Note'}</span>
           </button>
         </div>
       </form>
@@ -162,7 +298,7 @@ export const TextShare: React.FC<TextShareProps> = ({
               No notes shared yet
             </h4>
             <p className="text-xs text-slate-500 mt-1">
-              Paste or type anything above to share it instantly across all connected screens.
+              Paste or type anything above to share it instantly.
             </p>
           </div>
         ) : (
@@ -174,9 +310,17 @@ export const TextShare: React.FC<TextShareProps> = ({
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <h4 className="font-semibold text-xs sm:text-sm text-slate-100 truncate flex-1 min-w-0">
-                      {text.title || 'Untitled Note'}
-                    </h4>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <h4 className="font-semibold text-xs sm:text-sm text-slate-100 truncate">
+                        {text.title || 'Untitled Note'}
+                      </h4>
+                      {text.isPrivate && (
+                        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300 border border-teal-500/30">
+                          <Lock className="w-2.5 h-2.5" />
+                          1-to-1
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
@@ -223,7 +367,14 @@ export const TextShare: React.FC<TextShareProps> = ({
                 <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-800/60 flex items-center justify-between text-[10px] sm:text-[11px] text-slate-400 gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     {getDeviceIcon(text.creatorDevice)}
-                    <span className="truncate max-w-[100px] sm:max-w-[150px]">{text.creatorDevice}</span>
+                    <span className="truncate max-w-[120px]">
+                      {text.creatorName || text.creatorDevice}
+                    </span>
+                    {text.targetName && (
+                      <span className="text-teal-400/80 truncate">
+                        ➔ {text.targetName}
+                      </span>
+                    )}
                   </div>
                   <span className="truncate flex-shrink-0">{formatDate(text.createdAt)}</span>
                 </div>

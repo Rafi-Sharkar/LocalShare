@@ -19,15 +19,21 @@ import {
   List as ListIcon,
   Laptop,
   Smartphone,
+  Tablet,
   X,
+  Lock,
+  Globe,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react';
-import { FileMetadata, formatBytes } from '@/lib/types';
+import { FileMetadata, formatBytes, Device, normalizeMac } from '@/lib/types';
 
 interface FileListProps {
   files: FileMetadata[];
   onDelete: (id: string) => void;
   onPreview: (file: FileMetadata) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  myDevice?: Device | null;
 }
 
 export const FileList: React.FC<FileListProps> = ({
@@ -35,9 +41,11 @@ export const FileList: React.FC<FileListProps> = ({
   onDelete,
   onPreview,
   showToast,
+  myDevice,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [shareFilter, setShareFilter] = useState<'all' | 'public' | 'received' | 'sent'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -62,12 +70,18 @@ export const FileList: React.FC<FileListProps> = ({
     }
   };
 
-  const getDeviceIcon = (device: string) => {
-    if (/iOS|Android/i.test(device)) {
+  const getDeviceIcon = (deviceStr?: string) => {
+    if (!deviceStr) return <Laptop className="w-3.5 h-3.5 text-slate-400" />;
+    if (/iOS|Android|iPhone/i.test(deviceStr)) {
       return <Smartphone className="w-3.5 h-3.5 text-slate-400" />;
+    }
+    if (/iPad/i.test(deviceStr)) {
+      return <Tablet className="w-3.5 h-3.5 text-slate-400" />;
     }
     return <Laptop className="w-3.5 h-3.5 text-slate-400" />;
   };
+
+  const myCleanMac = myDevice?.mac ? normalizeMac(myDevice.mac).toUpperCase() : '';
 
   // Filtered files
   const filteredFiles = files.filter((file) => {
@@ -76,7 +90,24 @@ export const FileList: React.FC<FileListProps> = ({
       .includes(searchQuery.toLowerCase());
     const matchesCategory =
       selectedCategory === 'all' || file.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+
+    if (!matchesSearch || !matchesCategory) return false;
+
+    if (shareFilter === 'public') {
+      return !file.isPrivate;
+    }
+    if (shareFilter === 'received') {
+      if (!file.isPrivate || !myCleanMac) return false;
+      const targetMac = file.targetMac ? normalizeMac(file.targetMac).toUpperCase() : '';
+      return targetMac === myCleanMac;
+    }
+    if (shareFilter === 'sent') {
+      if (!myCleanMac) return false;
+      const uploaderMac = file.uploaderMac ? normalizeMac(file.uploaderMac).toUpperCase() : '';
+      return uploaderMac === myCleanMac;
+    }
+
+    return true;
   });
 
   const handleCopyLink = async (file: FileMetadata) => {
@@ -103,6 +134,45 @@ export const FileList: React.FC<FileListProps> = ({
   const isPreviewable = (category: FileMetadata['category']) => {
     return ['image', 'video', 'audio', 'pdf', 'code', 'document'].includes(
       category
+    );
+  };
+
+  const getDirectBadge = (file: FileMetadata) => {
+    if (!file.isPrivate) {
+      return (
+        <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-white/5">
+          <Globe className="w-2.5 h-2.5 text-cyan-400" />
+          Public
+        </span>
+      );
+    }
+
+    const fileTarget = file.targetMac ? normalizeMac(file.targetMac).toUpperCase() : '';
+    const fileUploader = file.uploaderMac ? normalizeMac(file.uploaderMac).toUpperCase() : '';
+
+    if (myCleanMac && fileTarget === myCleanMac) {
+      return (
+        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
+          <span>Received Direct (from {file.uploaderName || file.uploaderDevice})</span>
+        </span>
+      );
+    }
+
+    if (myCleanMac && fileUploader === myCleanMac) {
+      return (
+        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+          <ArrowUpRight className="w-3 h-3 text-indigo-400" />
+          <span>Sent to {file.targetName || file.targetMac?.slice(-5)}</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-300 border border-teal-500/30">
+        <Lock className="w-2.5 h-2.5 text-teal-400" />
+        <span>1-to-1</span>
+      </span>
     );
   };
 
@@ -160,10 +230,34 @@ export const FileList: React.FC<FileListProps> = ({
           </div>
         </div>
 
+        {/* 1-to-1 Sharing Filter Row */}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/5">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'All Files' },
+              { id: 'public', label: '🌐 Public' },
+              { id: 'received', label: '📥 Received (1-to-1)' },
+              { id: 'sent', label: '📤 Sent (1-to-1)' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setShareFilter(tab.id as any)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                  shareFilter === tab.id
+                    ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Categories Horizontal Scroll Bar */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none touch-pan-x -mx-1 px-1">
           {[
-            { id: 'all', label: 'All Files' },
+            { id: 'all', label: 'All Categories' },
             { id: 'image', label: 'Photos' },
             { id: 'video', label: 'Videos' },
             { id: 'audio', label: 'Audio' },
@@ -191,12 +285,12 @@ export const FileList: React.FC<FileListProps> = ({
         <div className="glass-card rounded-2xl p-8 sm:p-12 text-center text-slate-400">
           <FileIcon className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 text-slate-600 animate-pulse-subtle" />
           <h3 className="text-sm sm:text-base font-semibold text-slate-300">
-            {searchQuery ? 'No files match your search' : 'No files shared yet'}
+            {searchQuery ? 'No files match your search' : 'No files found'}
           </h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
             {searchQuery
               ? 'Try changing your search term or category filter.'
-              : 'Upload files above to instantly make them accessible to any device on your Wi-Fi.'}
+              : 'Upload files above to instantly make them accessible over your Wi-Fi.'}
           </p>
         </div>
       ) : viewMode === 'grid' ? (
@@ -205,13 +299,18 @@ export const FileList: React.FC<FileListProps> = ({
           {filteredFiles.map((file) => (
             <div
               key={file.id}
-              className="group glass-card glass-card-hover rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between overflow-hidden relative shadow-md"
+              className={`group glass-card glass-card-hover rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between overflow-hidden relative shadow-md ${
+                file.isPrivate ? 'border-teal-500/30 bg-teal-950/10' : ''
+              }`}
             >
-              {/* Top Row: Icon & Actions */}
+              {/* Top Row: Icon, Direct Badge & Actions */}
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2.5">
-                  <div className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/50 shadow-inner flex-shrink-0">
-                    {getCategoryIcon(file.category)}
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/50 shadow-inner flex-shrink-0">
+                      {getCategoryIcon(file.category)}
+                    </div>
+                    {getDirectBadge(file)}
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -250,7 +349,7 @@ export const FileList: React.FC<FileListProps> = ({
                   </div>
                 </div>
 
-                {/* File Name & Preview Image Thumbnail (if image) */}
+                {/* File Name & Preview Image Thumbnail */}
                 {file.category === 'image' && (
                   <div
                     onClick={() => onPreview(file)}
@@ -284,7 +383,9 @@ export const FileList: React.FC<FileListProps> = ({
               <div className="mt-3.5 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400 min-w-0">
                   {getDeviceIcon(file.uploaderDevice)}
-                  <span className="truncate max-w-[90px] sm:max-w-[120px]">{file.uploaderDevice}</span>
+                  <span className="truncate max-w-[100px] sm:max-w-[130px]">
+                    {file.uploaderName || file.uploaderDevice}
+                  </span>
                 </div>
 
                 <a
@@ -305,7 +406,9 @@ export const FileList: React.FC<FileListProps> = ({
           {filteredFiles.map((file) => (
             <div
               key={file.id}
-              className="p-3 sm:p-4 flex items-center justify-between gap-2 sm:gap-3 hover:bg-slate-800/30 transition-colors"
+              className={`p-3 sm:p-4 flex items-center justify-between gap-2 sm:gap-3 hover:bg-slate-800/30 transition-colors ${
+                file.isPrivate ? 'bg-teal-950/10' : ''
+              }`}
             >
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                 <div className="p-2 sm:p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/50 flex-shrink-0">
@@ -313,12 +416,15 @@ export const FileList: React.FC<FileListProps> = ({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <h4
-                    title={file.originalName}
-                    className="text-xs sm:text-sm font-semibold text-slate-200 truncate hover:text-teal-300 transition-colors"
-                  >
-                    {file.originalName}
-                  </h4>
+                  <div className="flex items-center gap-2">
+                    <h4
+                      title={file.originalName}
+                      className="text-xs sm:text-sm font-semibold text-slate-200 truncate hover:text-teal-300 transition-colors"
+                    >
+                      {file.originalName}
+                    </h4>
+                    {getDirectBadge(file)}
+                  </div>
                   <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
                     <span className="font-mono">{formatBytes(file.size)}</span>
                     <span>•</span>
@@ -326,7 +432,9 @@ export const FileList: React.FC<FileListProps> = ({
                     <span className="hidden sm:inline">•</span>
                     <span className="hidden sm:flex items-center gap-1">
                       {getDeviceIcon(file.uploaderDevice)}
-                      <span className="truncate max-w-[100px]">{file.uploaderDevice}</span>
+                      <span className="truncate max-w-[120px]">
+                        {file.uploaderName || file.uploaderDevice}
+                      </span>
                     </span>
                   </div>
                 </div>

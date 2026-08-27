@@ -1,16 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllFiles, saveUploadedFile, getStorageStats } from '@/lib/storage';
+import { resolveMacFromIp } from '@/lib/devices';
+import { normalizeMac, isValidMac } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+  return '127.0.0.1';
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const files = getAllFiles();
-    const stats = getStorageStats();
+    const ip = getClientIp(request);
+    const headerMac = request.headers.get('x-device-mac') || request.nextUrl.searchParams.get('mac');
+    let clientMac = headerMac && isValidMac(headerMac) ? normalizeMac(headerMac) : '';
+
+    if (!clientMac) {
+      clientMac = await resolveMacFromIp(ip);
+    }
+
+    const files = getAllFiles(clientMac);
+    const stats = getStorageStats(clientMac);
+
     return NextResponse.json({
       success: true,
       files,
       stats,
+      clientMac,
     });
   } catch (error) {
     return NextResponse.json(
@@ -26,7 +48,6 @@ export async function POST(request: NextRequest) {
     const uploadedFiles = formData.getAll('files') as File[];
 
     if (!uploadedFiles || uploadedFiles.length === 0) {
-      // Fallback check for single 'file' field
       const singleFile = formData.get('file') as File | null;
       if (singleFile) {
         uploadedFiles.push(singleFile);
@@ -40,12 +61,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract client IP and user agent
-    const clientIp =
-      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      request.headers.get('x-real-ip') ||
-      '127.0.0.1';
+    const clientIp = getClientIp(request);
     const userAgent = request.headers.get('user-agent') || '';
+
+    // Direct 1-to-1 recipient & sender parameters
+    const targetMacRaw = formData.get('targetMac') as string | null;
+    const targetName = (formData.get('targetName') as string) || undefined;
+    const uploaderMacRaw = (formData.get('uploaderMac') as string) || request.headers.get('x-device-mac');
+    const uploaderName = (formData.get('uploaderName') as string) || undefined;
+
+    let uploaderMac = uploaderMacRaw && isValidMac(uploaderMacRaw) ? normalizeMac(uploaderMacRaw) : '';
+    if (!uploaderMac) {
+      uploaderMac = await resolveMacFromIp(clientIp);
+    }
+
+    const targetMac = targetMacRaw && targetMacRaw !== 'all' && isValidMac(targetMacRaw)
+      ? normalizeMac(targetMacRaw)
+      : undefined;
 
     const savedResults = [];
 
@@ -53,16 +85,18 @@ export async function POST(request: NextRequest) {
       if (!file.name || file.size === 0) continue;
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      const saved = await saveUploadedFile(
-        buffer,
-        file.name,
+      const saved = await saveUploadedFile(buffer, file.name, {
         clientIp,
-        userAgent
-      );
+        userAgent,
+        uploaderMac,
+        uploaderName,
+        targetMac,
+        targetName,
+      });
       savedResults.push(saved);
     }
 
-    const stats = getStorageStats();
+    const stats = getStorageStats(uploaderMac);
 
     return NextResponse.json({
       success: true,

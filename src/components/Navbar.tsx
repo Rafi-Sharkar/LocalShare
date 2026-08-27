@@ -9,7 +9,12 @@ import {
   Radio,
   Files,
   FileText,
+  Laptop,
+  Smartphone,
+  Shield,
+  Users,
 } from 'lucide-react';
+import { Device } from '@/lib/types';
 
 interface NavbarProps {
   primaryUrl: string;
@@ -17,6 +22,9 @@ interface NavbarProps {
   port: string;
   isOnline: boolean;
   onOpenQR: () => void;
+  onOpenDeviceManager: () => void;
+  myDevice: Device | null;
+  activeDevicesCount: number;
   activeTab: 'files' | 'text';
   setActiveTab: (tab: 'files' | 'text') => void;
   isDarkMode: boolean;
@@ -31,6 +39,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   port,
   isOnline,
   onOpenQR,
+  onOpenDeviceManager,
+  myDevice,
+  activeDevicesCount,
   activeTab,
   setActiveTab,
   isDarkMode,
@@ -59,16 +70,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                     LocalShare
                   </h1>
                   <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-400 border border-teal-500/20 whitespace-nowrap">
-                    Wi-Fi
+                    1-to-1 Wi-Fi
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 hidden sm:block">
-                  Instant peer-to-peer sharing on your local network
+                  Direct peer-to-peer & 1-to-1 MAC address sharing
                 </p>
               </div>
             </div>
 
-            {/* Desktop Navigation Tabs (Hidden on mobile) */}
+            {/* Desktop Navigation Tabs */}
             <div className="hidden md:flex items-center bg-slate-900/70 p-1 rounded-xl border border-white/5 shadow-inner">
               <button
                 onClick={() => setActiveTab('files')}
@@ -118,21 +129,40 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Right Action buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-3">
-              {/* Wi-Fi IP Badge (Desktop/Tablet) */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
+              {/* Device / MAC Identifier Pill Button */}
               <button
-                onClick={onOpenQR}
-                title="Click to view QR code or network address"
-                className="cursor-pointer hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-950/40 border border-teal-500/30 text-teal-300 text-xs font-mono transition-all hover:bg-teal-900/40"
+                onClick={onOpenDeviceManager}
+                title="Manage device name and active LAN devices for 1-to-1 sharing"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-teal-500/30 text-teal-300 text-xs transition-all active:scale-95 group shadow-sm"
               >
-                <Radio className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
-                <span>{primaryIp}:{port}</span>
+                <div className="relative flex items-center">
+                  <Laptop className="w-3.5 h-3.5 text-teal-400" />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                </div>
+                <div className="flex flex-col text-left">
+                  <div className="flex items-center gap-1">
+                    <span className="font-semibold text-white max-w-[80px] sm:max-w-[110px] truncate">
+                      {myDevice?.name || 'My Device'}
+                    </span>
+                    <span className="hidden sm:inline-block text-[10px] font-mono text-teal-400/80">
+                      {myDevice?.mac ? `(${myDevice.mac.slice(-5)})` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                {activeDevicesCount > 1 && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-0.5">
+                    <Users className="w-2.5 h-2.5" />
+                    {activeDevicesCount}
+                  </span>
+                )}
               </button>
 
               {/* QR Connect Button */}
               <button
                 onClick={onOpenQR}
-                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs sm:text-sm font-semibold shadow-md shadow-indigo-500/20 active:scale-95 transition-all"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs sm:text-sm font-semibold shadow-md shadow-indigo-500/20 active:scale-95 transition-all"
               >
                 <QrCode className="w-4 h-4 flex-shrink-0" />
                 <span className="hidden xs:inline sm:inline">Connect</span>
@@ -155,12 +185,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </header>
 
-      {/* Mobile Bottom Navigation Bar (Visible only on screens < md) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-2xl">
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-2xl">
         <div className="flex items-center justify-around max-w-md mx-auto">
           <button
             onClick={() => setActiveTab('files')}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all duration-200 active:scale-95 ${
+            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all duration-200 active:scale-95 ${
               activeTab === 'files'
                 ? 'text-teal-400 font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
@@ -174,23 +204,36 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[11px] leading-tight">Shared Files</span>
+            <span className="text-[11px] leading-tight">Files</span>
           </button>
 
-          {/* Quick Connect Button in mobile bar */}
+          {/* Quick Devices / 1-to-1 button */}
+          <button
+            onClick={onOpenDeviceManager}
+            className="flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-teal-400 hover:text-teal-300 transition-all active:scale-95"
+          >
+            <div className="p-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 shadow-sm relative">
+              <Laptop className="w-4 h-4" />
+              {activeDevicesCount > 1 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              )}
+            </div>
+            <span className="text-[10px] text-slate-300 leading-tight">1-to-1 Device</span>
+          </button>
+
           <button
             onClick={onOpenQR}
-            className="flex flex-col items-center gap-1 py-1 px-4 rounded-xl text-indigo-400 hover:text-indigo-300 transition-all active:scale-95"
+            className="flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-indigo-400 hover:text-indigo-300 transition-all active:scale-95"
           >
-            <div className="p-2 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 shadow-sm">
+            <div className="p-1.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 shadow-sm">
               <QrCode className="w-4 h-4" />
             </div>
-            <span className="text-[10px] text-slate-300 leading-tight">QR Connect</span>
+            <span className="text-[10px] text-slate-300 leading-tight">Connect</span>
           </button>
 
           <button
             onClick={() => setActiveTab('text')}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-xl transition-all duration-200 active:scale-95 ${
+            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all duration-200 active:scale-95 ${
               activeTab === 'text'
                 ? 'text-teal-400 font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
@@ -204,7 +247,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[11px] leading-tight">Quick Notes</span>
+            <span className="text-[11px] leading-tight">Notes</span>
           </button>
         </div>
       </nav>

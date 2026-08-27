@@ -1,21 +1,34 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { QRCodeModal } from '@/components/QRCodeModal';
+import { DeviceManagerModal } from '@/components/DeviceManagerModal';
 import { FileUploader } from '@/components/FileUploader';
 import { FileList } from '@/components/FileList';
 import { FilePreviewModal } from '@/components/FilePreviewModal';
 import { TextShare } from '@/components/TextShare';
 import { StorageStats } from '@/components/StorageStats';
 import { Toast, ToastMessage } from '@/components/Toast';
-import { FileMetadata, SharedText, StorageStats as StatsType } from '@/lib/types';
+import { FileMetadata, SharedText, StorageStats as StatsType, Device, normalizeMac } from '@/lib/types';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'files' | 'text'>('files');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(true);
   const [isQRModalOpen, setIsQRModalOpen] = useState<boolean>(false);
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState<boolean>(false);
   const [previewFile, setPreviewFile] = useState<FileMetadata | null>(null);
+
+  // Device & 1-to-1 Sharing State
+  const [myDevice, setMyDevice] = useState<Device | null>(null);
+  const [serverMac, setServerMac] = useState<string>('');
+  const [activeDevices, setActiveDevices] = useState<Device[]>([]);
+  const [selectedTargetDevice, setSelectedTargetDevice] = useState<{
+    mac: string;
+    name: string;
+  } | null>(null);
+
+  const myMacRef = useRef<string>('');
 
   // Network info
   const [networkInfo, setNetworkInfo] = useState<{
@@ -48,13 +61,59 @@ export default function HomePage() {
       setToasts((prev) => [...prev, { id, message, type }]);
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 4000);
+      }, 4500);
     },
     []
   );
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Device Registration & Heartbeat
+  const syncDevicePresence = useCallback(async (customName?: string) => {
+    try {
+      const storedMac = typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '';
+      const storedName = customName || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_name') || '' : '');
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (storedMac) {
+        headers['x-device-mac'] = storedMac;
+      }
+
+      const res = await fetch('/api/devices', {
+        method: storedName || storedMac ? 'POST' : 'GET',
+        headers,
+        body: storedName || storedMac ? JSON.stringify({ mac: storedMac, name: storedName }) : undefined,
+      });
+
+      const data = await res.json();
+      if (data.success && data.myDevice) {
+        setMyDevice(data.myDevice);
+        myMacRef.current = data.myDevice.mac;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('localshare_device_mac', data.myDevice.mac);
+          if (data.myDevice.name) {
+            localStorage.setItem('localshare_device_name', data.myDevice.name);
+          }
+        }
+        if (data.activeDevices) {
+          setActiveDevices(data.activeDevices);
+        }
+        if (data.serverMac) {
+          setServerMac(data.serverMac);
+        }
+      }
+    } catch {
+      // offline or server restarting
+    }
+  }, []);
+
+  const handleUpdateDeviceName = async (newName: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('localshare_device_name', newName);
+    }
+    await syncDevicePresence(newName);
   };
 
   // Fetch Network Info
@@ -75,10 +134,14 @@ export default function HomePage() {
     }
   }, []);
 
-  // Fetch Files & Stats
+  // Fetch Files & Stats with MAC access header
   const fetchFiles = useCallback(async () => {
     try {
-      const res = await fetch('/api/files');
+      const storedMac = myMacRef.current || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '');
+      const headers: Record<string, string> = {};
+      if (storedMac) headers['x-device-mac'] = storedMac;
+
+      const res = await fetch('/api/files', { headers });
       const data = await res.json();
       if (data.success) {
         setFiles(data.files);
@@ -89,10 +152,14 @@ export default function HomePage() {
     }
   }, []);
 
-  // Fetch Shared Texts
+  // Fetch Shared Texts with MAC access header
   const fetchTexts = useCallback(async () => {
     try {
-      const res = await fetch('/api/texts');
+      const storedMac = myMacRef.current || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '');
+      const headers: Record<string, string> = {};
+      if (storedMac) headers['x-device-mac'] = storedMac;
+
+      const res = await fetch('/api/texts', { headers });
       const data = await res.json();
       if (data.success) {
         setTexts(data.texts);
@@ -102,11 +169,17 @@ export default function HomePage() {
     }
   }, []);
 
-  // Real-time SSE Connection
+  // Initialize & Setup SSE Listener
   useEffect(() => {
+    syncDevicePresence();
     fetchNetworkInfo();
     fetchFiles();
     fetchTexts();
+
+    // Periodic heartbeat to refresh device list every 12 seconds
+    const heartbeatInterval = setInterval(() => {
+      syncDevicePresence();
+    }, 12000);
 
     // Setup Server-Sent Events listener
     const eventSource = new EventSource('/api/events');
@@ -114,18 +187,53 @@ export default function HomePage() {
     eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
+
+        if (payload.type === 'device:updated') {
+          syncDevicePresence();
+        }
+
         if (
           payload.type === 'file:created' ||
           payload.type === 'file:deleted' ||
           payload.type === 'storage:updated'
         ) {
           fetchFiles();
+
+          // Check if newly created file was targeted to this device
+          if (payload.type === 'file:created' && payload.data) {
+            const file = payload.data as FileMetadata;
+            const currentMac = myMacRef.current ? normalizeMac(myMacRef.current).toUpperCase() : '';
+            const targetMac = file.targetMac ? normalizeMac(file.targetMac).toUpperCase() : '';
+            const uploaderMac = file.uploaderMac ? normalizeMac(file.uploaderMac).toUpperCase() : '';
+
+            if (file.isPrivate && targetMac === currentMac && uploaderMac !== currentMac) {
+              showToast(
+                `🔔 Direct 1-to-1 file received from ${file.uploaderName || file.uploaderDevice}: "${file.originalName}"`,
+                'success'
+              );
+            }
+          }
         }
+
         if (
           payload.type === 'text:created' ||
           payload.type === 'text:deleted'
         ) {
           fetchTexts();
+
+          if (payload.type === 'text:created' && payload.data) {
+            const text = payload.data as SharedText;
+            const currentMac = myMacRef.current ? normalizeMac(myMacRef.current).toUpperCase() : '';
+            const targetMac = text.targetMac ? normalizeMac(text.targetMac).toUpperCase() : '';
+            const creatorMac = text.creatorMac ? normalizeMac(text.creatorMac).toUpperCase() : '';
+
+            if (text.isPrivate && targetMac === currentMac && creatorMac !== currentMac) {
+              showToast(
+                `💬 Direct note received from ${text.creatorName || text.creatorDevice}!`,
+                'info'
+              );
+            }
+          }
         }
       } catch {
         // Heartbeat or malformed
@@ -133,9 +241,10 @@ export default function HomePage() {
     };
 
     return () => {
+      clearInterval(heartbeatInterval);
       eventSource.close();
     };
-  }, [fetchNetworkInfo, fetchFiles, fetchTexts]);
+  }, [syncDevicePresence, fetchNetworkInfo, fetchFiles, fetchTexts, showToast]);
 
   // Handle Theme change
   useEffect(() => {
@@ -152,13 +261,17 @@ export default function HomePage() {
   const handleDeleteFile = async (id: string) => {
     if (!confirm('Are you sure you want to delete this shared file?')) return;
     try {
-      const res = await fetch(`/api/files/${id}`, { method: 'DELETE' });
+      const storedMac = myDevice?.mac || '';
+      const headers: Record<string, string> = {};
+      if (storedMac) headers['x-device-mac'] = storedMac;
+
+      const res = await fetch(`/api/files/${id}`, { method: 'DELETE', headers });
       const data = await res.json();
       if (data.success) {
         showToast('File deleted successfully', 'success');
         fetchFiles();
       } else {
-        showToast('Failed to delete file', 'error');
+        showToast(data.error || 'Failed to delete file', 'error');
       }
     } catch {
       showToast('Error deleting file', 'error');
@@ -166,11 +279,26 @@ export default function HomePage() {
   };
 
   // Text Actions
-  const handleAddText = async (content: string, title?: string) => {
+  const handleAddText = async (
+    content: string,
+    title?: string,
+    options?: { targetMac?: string; targetName?: string }
+  ) => {
+    const storedMac = myDevice?.mac || '';
     const res = await fetch('/api/texts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, title }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(storedMac ? { 'x-device-mac': storedMac } : {}),
+      },
+      body: JSON.stringify({
+        content,
+        title,
+        creatorMac: myDevice?.mac,
+        creatorName: myDevice?.name,
+        targetMac: options?.targetMac,
+        targetName: options?.targetName,
+      }),
     });
     const data = await res.json();
     if (data.success) {
@@ -202,6 +330,9 @@ export default function HomePage() {
         port={networkInfo.port}
         isOnline={true}
         onOpenQR={() => setIsQRModalOpen(true)}
+        onOpenDeviceManager={() => setIsDeviceModalOpen(true)}
+        myDevice={myDevice}
+        activeDevicesCount={activeDevices.length}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isDarkMode={isDarkMode}
@@ -221,6 +352,11 @@ export default function HomePage() {
             <FileUploader
               onUploadSuccess={fetchFiles}
               showToast={showToast}
+              myDevice={myDevice}
+              activeDevices={activeDevices}
+              selectedTargetDevice={selectedTargetDevice}
+              onClearTargetDevice={() => setSelectedTargetDevice(null)}
+              onSelectTargetDevice={(d) => setSelectedTargetDevice(d)}
             />
 
             <FileList
@@ -228,6 +364,7 @@ export default function HomePage() {
               onDelete={handleDeleteFile}
               onPreview={(file) => setPreviewFile(file)}
               showToast={showToast}
+              myDevice={myDevice}
             />
           </div>
         )}
@@ -240,6 +377,9 @@ export default function HomePage() {
               onAddText={handleAddText}
               onDeleteText={handleDeleteText}
               showToast={showToast}
+              myDevice={myDevice}
+              activeDevices={activeDevices}
+              selectedTargetDevice={selectedTargetDevice}
             />
           </div>
         )}
@@ -254,6 +394,17 @@ export default function HomePage() {
         port={networkInfo.port}
       />
 
+      <DeviceManagerModal
+        isOpen={isDeviceModalOpen}
+        onClose={() => setIsDeviceModalOpen(false)}
+        myDevice={myDevice}
+        activeDevices={activeDevices}
+        onUpdateDeviceName={handleUpdateDeviceName}
+        onSelectTargetDevice={(target) => setSelectedTargetDevice(target)}
+        showToast={showToast}
+        serverMac={serverMac}
+      />
+
       <FilePreviewModal
         file={previewFile}
         onClose={() => setPreviewFile(null)}
@@ -262,12 +413,12 @@ export default function HomePage() {
       {/* Toast Notifications */}
       <Toast toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Footer (hidden on small mobile or cleanly tucked above bottom nav) */}
+      {/* Footer */}
       <footer className="border-t border-white/5 py-4 sm:py-6 text-center text-xs text-slate-500 hidden sm:block">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>LocalShare — High-speed peer-to-peer Wi-Fi file & text sharing</span>
+          <span>LocalShare — High-speed peer-to-peer 1-to-1 Wi-Fi file & text sharing</span>
           <span className="font-mono text-[11px] text-teal-400/80">
-            Host: {networkInfo.primaryIp}:{networkInfo.port}
+            Host: {networkInfo.primaryIp}:{networkInfo.port} {serverMac ? `• MAC: ${serverMac}` : ''}
           </span>
         </div>
       </footer>
