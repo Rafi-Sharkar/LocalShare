@@ -15,15 +15,26 @@ function getClientIp(request: NextRequest): string {
   return '127.0.0.1';
 }
 
+/**
+ * Resolve client MAC: trust client-provided header first, ARP fallback only for localhost.
+ */
+async function resolveClientMac(request: NextRequest, ip: string, formDataMac?: string | null): Promise<string> {
+  // Prefer explicit MAC from form data, then header, then query param
+  if (formDataMac && isValidMac(formDataMac)) {
+    return normalizeMac(formDataMac);
+  }
+  const headerMac = request.headers.get('x-device-mac') || request.nextUrl.searchParams.get('mac');
+  if (headerMac && isValidMac(headerMac)) {
+    return normalizeMac(headerMac);
+  }
+  // Fallback to ARP resolution
+  return await resolveMacFromIp(ip);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const headerMac = request.headers.get('x-device-mac') || request.nextUrl.searchParams.get('mac');
-    let clientMac = headerMac && isValidMac(headerMac) ? normalizeMac(headerMac) : '';
-
-    if (!clientMac) {
-      clientMac = await resolveMacFromIp(ip);
-    }
+    const clientMac = await resolveClientMac(request, ip);
 
     const files = getAllFiles(clientMac);
     const stats = getStorageStats(clientMac);
@@ -70,10 +81,7 @@ export async function POST(request: NextRequest) {
     const uploaderMacRaw = (formData.get('uploaderMac') as string) || request.headers.get('x-device-mac');
     const uploaderName = (formData.get('uploaderName') as string) || undefined;
 
-    let uploaderMac = uploaderMacRaw && isValidMac(uploaderMacRaw) ? normalizeMac(uploaderMacRaw) : '';
-    if (!uploaderMac) {
-      uploaderMac = await resolveMacFromIp(clientIp);
-    }
+    const uploaderMac = await resolveClientMac(request, clientIp, uploaderMacRaw);
 
     const targetMac = targetMacRaw && targetMacRaw !== 'all' && isValidMac(targetMacRaw)
       ? normalizeMac(targetMacRaw)
