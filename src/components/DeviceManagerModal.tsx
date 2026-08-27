@@ -93,8 +93,9 @@ export const DeviceManagerModal: React.FC<DeviceManagerModalProps> = ({
     return <Laptop className="w-5 h-5 text-teal-400" />;
   };
 
+  const myCleanMac = myDevice?.mac ? normalizeMac(myDevice.mac).toUpperCase() : '';
   const otherDevices = activeDevices.filter(
-    (d) => myDevice?.mac && d.mac !== myDevice.mac
+    (d) => myCleanMac && normalizeMac(d.mac).toUpperCase() !== myCleanMac
   );
 
   return (

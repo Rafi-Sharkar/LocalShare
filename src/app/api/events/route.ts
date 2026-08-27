@@ -1,16 +1,46 @@
 import { eventBus } from '@/lib/events';
+import { getActiveDevices } from '@/lib/devices';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   const encoder = new TextEncoder();
+
+  // Extract client MAC from query param (optional, for logging/association)
+  const url = new URL(request.url);
+  const _clientMac = url.searchParams.get('mac') || '';
+
+  // We need to store references for cleanup in cancel()
+  let listener: ((eventData: unknown) => void) | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
       // Send initial keepalive
       controller.enqueue(encoder.encode(': connected\n\n'));
 
-      const listener = (eventData: unknown) => {
+      // Immediately push current active device list so newly-connected clients
+      // learn about all currently registered peers
+      try {
+        const activeDevices = getActiveDevices();
+        if (activeDevices.length > 0) {
+          const initialPayload = {
+            type: 'device:updated',
+            data: {
+              device: null,
+              activeDevices,
+            },
+            timestamp: Date.now(),
+          };
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(initialPayload)}\n\n`)
+          );
+        }
+      } catch {
+        // Ignore errors pushing initial state
+      }
+
+      listener = (eventData: unknown) => {
         try {
           const dataString = `data: ${JSON.stringify(eventData)}\n\n`;
           controller.enqueue(encoder.encode(dataString));
@@ -22,23 +52,24 @@ export async function GET() {
       eventBus.on('change', listener);
 
       // Send periodic heartbeat every 20 seconds to prevent proxy/browser timeout
-      const heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': heartbeat\n\n'));
         } catch {
-          clearInterval(heartbeat);
-          eventBus.off('change', listener);
+          // Stream closed — will be cleaned up in cancel()
         }
       }, 20000);
-
-      // Cleanup when stream ends
-      return () => {
-        clearInterval(heartbeat);
-        eventBus.off('change', listener);
-      };
     },
     cancel() {
-      // Stream canceled by client
+      // Proper cleanup when stream is closed by client
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+      if (listener) {
+        eventBus.off('change', listener);
+        listener = null;
+      }
     },
   });
 

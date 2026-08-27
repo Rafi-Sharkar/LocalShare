@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   Send,
@@ -55,9 +55,15 @@ export const TextShare: React.FC<TextShareProps> = ({
   const [customMacInput, setCustomMacInput] = useState('');
   const [customNameInput, setCustomNameInput] = useState('');
 
+  const myCleanMac = myDevice?.mac ? normalizeMac(myDevice.mac).toUpperCase() : '';
   const otherDevices = activeDevices.filter(
-    (d) => myDevice?.mac && d.mac !== myDevice.mac
+    (d) => myCleanMac && normalizeMac(d.mac).toUpperCase() !== myCleanMac
   );
+
+  // Sync local targetRecipient when parent's selectedTargetDevice changes
+  useEffect(() => {
+    setTargetRecipient(selectedTargetDevice || null);
+  }, [selectedTargetDevice]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
