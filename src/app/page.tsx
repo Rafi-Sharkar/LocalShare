@@ -10,7 +10,7 @@ import { FilePreviewModal } from '@/components/FilePreviewModal';
 import { TextShare } from '@/components/TextShare';
 import { StorageStats } from '@/components/StorageStats';
 import { Toast, ToastMessage } from '@/components/Toast';
-import { FileMetadata, SharedText, StorageStats as StatsType, Device, normalizeMac } from '@/lib/types';
+import { FileMetadata, SharedText, StorageStats as StatsType, Device, normalizeMac, isValidMac, generateClientMac } from '@/lib/types';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'files' | 'text'>('files');
@@ -70,35 +70,56 @@ export default function HomePage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  /**
+   * Get or create a stable client MAC stored in localStorage.
+   * This is called once on init and used for all API requests.
+   */
+  const getStableClientMac = useCallback((): string => {
+    if (typeof window === 'undefined') return '';
+    let mac = localStorage.getItem('localshare_device_mac') || '';
+    if (!mac || !isValidMac(mac)) {
+      mac = generateClientMac();
+      localStorage.setItem('localshare_device_mac', mac);
+    }
+    myMacRef.current = mac;
+    return mac;
+  }, []);
+
   // Device Registration & Heartbeat
   const syncDevicePresence = useCallback(async (customName?: string) => {
     try {
-      const storedMac = typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '';
+      const mac = getStableClientMac();
+      if (!mac) return;
+
       const storedName = customName || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_name') || '' : '');
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (storedMac) {
-        headers['x-device-mac'] = storedMac;
-      }
-
       const res = await fetch('/api/devices', {
-        method: storedName || storedMac ? 'POST' : 'GET',
-        headers,
-        body: storedName || storedMac ? JSON.stringify({ mac: storedMac, name: storedName }) : undefined,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-mac': mac,
+        },
+        body: JSON.stringify({ mac, name: storedName }),
       });
 
       const data = await res.json();
       if (data.success && data.myDevice) {
-        setMyDevice(data.myDevice);
-        myMacRef.current = data.myDevice.mac;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('localshare_device_mac', data.myDevice.mac);
-          if (data.myDevice.name) {
-            localStorage.setItem('localshare_device_name', data.myDevice.name);
-          }
+        setMyDevice({
+          ...data.myDevice,
+          mac, // Always use our client-side stable MAC
+          isCurrentDevice: true,
+        });
+        if (typeof window !== 'undefined' && data.myDevice.name) {
+          localStorage.setItem('localshare_device_name', data.myDevice.name);
         }
         if (data.activeDevices) {
-          setActiveDevices(data.activeDevices);
+          const myCleanMac = normalizeMac(mac).toUpperCase();
+          setActiveDevices(
+            data.activeDevices.map((d: Device) => ({
+              ...d,
+              isCurrentDevice: normalizeMac(d.mac).toUpperCase() === myCleanMac,
+            }))
+          );
         }
         if (data.serverMac) {
           setServerMac(data.serverMac);
@@ -107,7 +128,7 @@ export default function HomePage() {
     } catch {
       // offline or server restarting
     }
-  }, []);
+  }, [getStableClientMac]);
 
   const handleUpdateDeviceName = async (newName: string) => {
     if (typeof window !== 'undefined') {
@@ -115,6 +136,12 @@ export default function HomePage() {
     }
     await syncDevicePresence(newName);
   };
+
+  // Helper to get MAC header for API requests
+  const getMacHeaders = useCallback((): Record<string, string> => {
+    const mac = myMacRef.current || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '');
+    return mac ? { 'x-device-mac': mac } : {};
+  }, []);
 
   // Fetch Network Info
   const fetchNetworkInfo = useCallback(async () => {
@@ -137,11 +164,7 @@ export default function HomePage() {
   // Fetch Files & Stats with MAC access header
   const fetchFiles = useCallback(async () => {
     try {
-      const storedMac = myMacRef.current || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '');
-      const headers: Record<string, string> = {};
-      if (storedMac) headers['x-device-mac'] = storedMac;
-
-      const res = await fetch('/api/files', { headers });
+      const res = await fetch('/api/files', { headers: getMacHeaders() });
       const data = await res.json();
       if (data.success) {
         setFiles(data.files);
@@ -150,16 +173,12 @@ export default function HomePage() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [getMacHeaders]);
 
   // Fetch Shared Texts with MAC access header
   const fetchTexts = useCallback(async () => {
     try {
-      const storedMac = myMacRef.current || (typeof window !== 'undefined' ? localStorage.getItem('localshare_device_mac') || '' : '');
-      const headers: Record<string, string> = {};
-      if (storedMac) headers['x-device-mac'] = storedMac;
-
-      const res = await fetch('/api/texts', { headers });
+      const res = await fetch('/api/texts', { headers: getMacHeaders() });
       const data = await res.json();
       if (data.success) {
         setTexts(data.texts);
@@ -167,29 +186,43 @@ export default function HomePage() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [getMacHeaders]);
 
   // Initialize & Setup SSE Listener
   useEffect(() => {
+    // Ensure stable client MAC is created before any API calls
+    getStableClientMac();
+
     syncDevicePresence();
     fetchNetworkInfo();
     fetchFiles();
     fetchTexts();
 
-    // Periodic heartbeat to refresh device list every 12 seconds
+    // Periodic heartbeat to refresh device presence every 30 seconds
     const heartbeatInterval = setInterval(() => {
       syncDevicePresence();
-    }, 12000);
+    }, 30000);
 
-    // Setup Server-Sent Events listener
-    const eventSource = new EventSource('/api/events');
+    // Setup Server-Sent Events listener with client MAC as query param
+    const clientMac = myMacRef.current || localStorage.getItem('localshare_device_mac') || '';
+    const sseUrl = clientMac ? `/api/events?mac=${encodeURIComponent(clientMac)}` : '/api/events';
+    const eventSource = new EventSource(sseUrl);
 
     eventSource.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
+        const currentMac = myMacRef.current ? normalizeMac(myMacRef.current).toUpperCase() : '';
 
-        if (payload.type === 'device:updated') {
-          syncDevicePresence();
+        if (payload.type === 'device:updated' && payload.data) {
+          if (payload.data.activeDevices) {
+            // Mark isCurrentDevice on all devices using our client MAC
+            setActiveDevices(
+              payload.data.activeDevices.map((d: Device) => ({
+                ...d,
+                isCurrentDevice: currentMac ? normalizeMac(d.mac).toUpperCase() === currentMac : false,
+              }))
+            );
+          }
         }
 
         if (
@@ -202,7 +235,6 @@ export default function HomePage() {
           // Check if newly created file was targeted to this device
           if (payload.type === 'file:created' && payload.data) {
             const file = payload.data as FileMetadata;
-            const currentMac = myMacRef.current ? normalizeMac(myMacRef.current).toUpperCase() : '';
             const targetMac = file.targetMac ? normalizeMac(file.targetMac).toUpperCase() : '';
             const uploaderMac = file.uploaderMac ? normalizeMac(file.uploaderMac).toUpperCase() : '';
 
@@ -223,7 +255,6 @@ export default function HomePage() {
 
           if (payload.type === 'text:created' && payload.data) {
             const text = payload.data as SharedText;
-            const currentMac = myMacRef.current ? normalizeMac(myMacRef.current).toUpperCase() : '';
             const targetMac = text.targetMac ? normalizeMac(text.targetMac).toUpperCase() : '';
             const creatorMac = text.creatorMac ? normalizeMac(text.creatorMac).toUpperCase() : '';
 
@@ -244,7 +275,7 @@ export default function HomePage() {
       clearInterval(heartbeatInterval);
       eventSource.close();
     };
-  }, [syncDevicePresence, fetchNetworkInfo, fetchFiles, fetchTexts, showToast]);
+  }, [getStableClientMac, syncDevicePresence, fetchNetworkInfo, fetchFiles, fetchTexts, showToast]);
 
   // Handle Theme change
   useEffect(() => {
@@ -261,11 +292,7 @@ export default function HomePage() {
   const handleDeleteFile = async (id: string) => {
     if (!confirm('Are you sure you want to delete this shared file?')) return;
     try {
-      const storedMac = myDevice?.mac || '';
-      const headers: Record<string, string> = {};
-      if (storedMac) headers['x-device-mac'] = storedMac;
-
-      const res = await fetch(`/api/files/${id}`, { method: 'DELETE', headers });
+      const res = await fetch(`/api/files/${id}`, { method: 'DELETE', headers: getMacHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast('File deleted successfully', 'success');
@@ -284,17 +311,16 @@ export default function HomePage() {
     title?: string,
     options?: { targetMac?: string; targetName?: string }
   ) => {
-    const storedMac = myDevice?.mac || '';
     const res = await fetch('/api/texts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(storedMac ? { 'x-device-mac': storedMac } : {}),
+        ...getMacHeaders(),
       },
       body: JSON.stringify({
         content,
         title,
-        creatorMac: myDevice?.mac,
+        creatorMac: myMacRef.current || myDevice?.mac,
         creatorName: myDevice?.name,
         targetMac: options?.targetMac,
         targetName: options?.targetName,
@@ -310,7 +336,7 @@ export default function HomePage() {
 
   const handleDeleteText = async (id: string) => {
     try {
-      const res = await fetch(`/api/texts?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/texts?id=${id}`, { method: 'DELETE', headers: getMacHeaders() });
       const data = await res.json();
       if (data.success) {
         showToast('Note deleted', 'info');

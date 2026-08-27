@@ -156,7 +156,9 @@ export function getDefaultDeviceName(osName: string, ip: string): string {
 }
 
 /**
- * Register or update device presence in the active LAN registry
+ * Register or update device presence in the active LAN registry.
+ * Always broadcasts the updated device list so newly-connected SSE clients
+ * learn about all currently active devices.
  */
 export function registerDeviceHeartbeat(params: {
   mac: string;
@@ -165,6 +167,9 @@ export function registerDeviceHeartbeat(params: {
   userAgent?: string;
 }): Device {
   const cleanMac = normalizeMac(params.mac);
+  if (!cleanMac) {
+    throw new Error('Cannot register device without a valid MAC address');
+  }
   const cleanIp = params.ip.replace(/^::ffff:/, '').trim();
   const osName = detectDeviceOS(params.userAgent);
   const now = new Date().toISOString();
@@ -183,9 +188,29 @@ export function registerDeviceHeartbeat(params: {
   };
 
   activeDevices.set(cleanMac, device);
-  broadcastEvent('device:updated', { device });
+
+  // Always broadcast so newly-connected SSE clients discover all active peers
+  broadcastEvent('device:updated', {
+    device,
+    activeDevices: getActiveDevices(),
+  });
 
   return device;
+}
+
+/**
+ * Explicitly remove a device from the active registry
+ */
+export function removeDevice(mac: string): boolean {
+  const cleanMac = normalizeMac(mac);
+  const existed = activeDevices.delete(cleanMac);
+  if (existed) {
+    broadcastEvent('device:updated', {
+      device: null,
+      activeDevices: getActiveDevices(),
+    });
+  }
+  return existed;
 }
 
 /**
