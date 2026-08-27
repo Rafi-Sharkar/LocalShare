@@ -75,3 +75,12 @@ export function isValidMac(mac?: string | null): boolean {
   const regex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
   return regex.test(mac.trim());
 }
+
+export function generateClientMac(): string {
+  const hex = '0123456789ABCDEF';
+  let mac = '02'; // locally administered unicast
+  for (let i = 0; i < 5; i++) {
+    mac += ':' + hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)];
+  }
+  return mac;
+}

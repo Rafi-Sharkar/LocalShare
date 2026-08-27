@@ -20,14 +20,24 @@ function getClientIp(request: NextRequest): string {
   return '127.0.0.1';
 }
 
+/**
+ * Resolve client MAC: trust client-provided header first, ARP fallback only.
+ */
+async function resolveClientMac(request: NextRequest, ip: string, bodyMac?: string | null): Promise<string> {
+  if (bodyMac && isValidMac(bodyMac)) {
+    return normalizeMac(bodyMac);
+  }
+  const headerMac = request.headers.get('x-device-mac') || request.nextUrl.searchParams.get('mac');
+  if (headerMac && isValidMac(headerMac)) {
+    return normalizeMac(headerMac);
+  }
+  return await resolveMacFromIp(ip);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const headerMac = request.headers.get('x-device-mac') || request.nextUrl.searchParams.get('mac');
-    let clientMac = headerMac && isValidMac(headerMac) ? normalizeMac(headerMac) : '';
-    if (!clientMac) {
-      clientMac = await resolveMacFromIp(ip);
-    }
+    const clientMac = await resolveClientMac(request, ip);
 
     const texts = getAllTexts(clientMac);
     return NextResponse.json({
@@ -59,10 +69,7 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || '';
 
     const creatorMacRaw = body.creatorMac || request.headers.get('x-device-mac');
-    let creatorMac = creatorMacRaw && isValidMac(creatorMacRaw) ? normalizeMac(creatorMacRaw) : '';
-    if (!creatorMac) {
-      creatorMac = await resolveMacFromIp(clientIp);
-    }
+    const creatorMac = await resolveClientMac(request, clientIp, creatorMacRaw);
 
     const targetMac = targetMacRaw && targetMacRaw !== 'all' && isValidMac(targetMacRaw)
       ? normalizeMac(targetMacRaw)
@@ -113,7 +120,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const ip = getClientIp(request);
-    const clientMac = await resolveMacFromIp(ip);
+    const clientMac = await resolveClientMac(request, ip);
     const stats = getStorageStats(clientMac);
 
     return NextResponse.json({

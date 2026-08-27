@@ -1,20 +1,25 @@
-# 🚀 LocalShare — Instant Local Wi-Fi File & Text Sharing
+# 🚀 LocalShare — Instant Local Wi-Fi File & Text Sharing (Public & 1-to-1 Direct)
 
-**LocalShare** is a high-speed, peer-to-peer web application built with **Next.js 14**, **Tailwind CSS**, and **Docker** that allows anyone connected to the same Wi-Fi network (Windows, macOS, Linux, iOS, Android) to instantly share files and clipboard text notes with zero configuration.
+**LocalShare** is a high-speed, peer-to-peer web application built with **Next.js**, **Tailwind CSS**, and **Docker** that allows anyone connected to the same Wi-Fi network (Windows, macOS, Linux, iOS, Android) to instantly share files and clipboard text notes with zero configuration.
+
+Supports both **Public LAN Sharing** (accessible to all devices on the Wi-Fi) and **Private 1-to-1 Sharing** (secured directly to a specific device's MAC address / identity).
 
 ---
 
 ## ✨ Features
 
 - ⚡ **High-Speed LAN Transfers**: Files transfer directly over your local router at maximum Wi-Fi speeds without ever passing through external third-party cloud servers.
+- 🔒 **1-to-1 Direct MAC Sharing**: Send files or notes securely to a specific device on your Wi-Fi network. Only the designated recipient can view and download private transfers.
+- 🌐 **Public Broadcast Sharing**: Share files and notes with all devices connected to the Wi-Fi simultaneously.
 - 📱 **Instant QR Code Connect**: Automatic local network IP discovery and one-click QR code generation. Mobile devices can scan with their camera to connect in 1 second.
-- 📂 **Drag-and-Drop File Sharing**: Drag and drop any file or batch of files with live progress tracking, file category tags, and storage stats.
+- 🔍 **Auto Device Discovery & Naming**: Discovers active Wi-Fi clients and automatically labels them (e.g. *iOS (iPhone)*, *Android*, *Windows PC*, *macOS*). You can rename your device anytime.
+- 📂 **Drag-and-Drop File Sharing**: Drag and drop any file or batch of files with live progress tracking, category filtering, and storage statistics.
 - 👁️ **In-Browser File Preview**:
   - 🖼️ Images (full zoom/preview)
-  - 🎥 Video player (HTML5 player)
+  - 🎥 Video player (HTML5 streaming player)
   - 🎵 Audio player (with playback controls)
   - 📄 PDF reader
-  - 💻 Code & text viewer with line numbers and one-click copy
+  - 💻 Code & text viewer with syntax highlighting and one-click copy
 - 📋 **Quick Notes & Clipboard Sharing**: Share URLs, text notes, credentials, or code snippets across devices with one click.
 - 🔄 **Real-Time Live Sync**: Utilizes Server-Sent Events (SSE) so all connected devices update their lists automatically when a new file or note is shared.
 - 🐳 **Fully Dockerized**: Production-ready multi-stage `Dockerfile` and `docker-compose.yml` with persistent storage volumes.
@@ -24,7 +29,7 @@
 
 ## 🛠️ Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS & Glassmorphism
 - **Icons**: Lucide React
@@ -68,72 +73,56 @@ npm run start
 
 ---
 
-## 📖 How to Send and Receive Files
+## 📖 How to Share: Public vs 1-to-1 Direct Device Sharing
 
-### 📤 1. How the Sender Sends Files / Notes
+LocalShare gives you two flexible sharing modes for both **Files** and **Quick Notes**:
 
-#### A. Sending Files from a PC or Mac (Desktop / Laptop):
-1. Open `http://localhost:3000` (or `http://<LAN_IP>:3000`) in your browser.
-2. Under the **Files** tab, you have two simple ways to send:
-   - **Drag & Drop**: Drag any file(s) from your desktop/file explorer and drop them directly onto the dashed upload zone.
-   - **File Picker**: Click anywhere inside the upload box to browse and select one or multiple files.
-3. You will see a **live progress bar** showing upload percentage.
-4. Once completed, your file is instantly available to all other connected devices on the Wi-Fi.
+### 🌐 Mode 1: Public LAN Sharing (Default)
+When in Public mode, anything you share is immediately accessible to **all devices** connected to your local Wi-Fi.
 
-#### B. Sending Files from a Mobile Phone (iPhone / Android):
-1. Connect your phone to the same Wi-Fi.
-2. Open your phone's **Camera** or QR scanner and scan the QR code displayed on the host PC screen.
-3. Tap the link to open LocalShare in Safari or Chrome.
-4. Tap the **Upload** area, choose **Photo Library**, **Take Photo/Video**, or **Choose Files**.
-5. The file is uploaded immediately and appears on your PC screen in real time.
-
-#### C. Sharing Clipboard Text, Links, or Code Snippets:
-1. Switch to the **Quick Notes** tab in the top navigation.
-2. Type or click **"Paste from Clipboard"** to insert text, URLs, passwords, or code.
-3. Add an optional title and click **"Share Note"**.
-4. The note will instantly pop up on all other connected devices.
+1. In the **Files** or **Quick Notes** tab, check that the **Recipient** selector is set to **`🌐 Everyone (Public LAN)`**.
+2. Select or drop your files, or enter your text note and tap **Share**.
+3. Every connected phone, laptop, or tablet on your Wi-Fi will see the file/note in real time.
 
 ---
 
-### 📥 2. How the Receiver Receives & Downloads Files / Notes
+### 🔒 Mode 2: Direct 1-to-1 Sharing (Specific Device / MAC Address)
+When you want to send a file or private note to **only one person/device** (e.g. sending a file from your laptop directly to your phone):
 
-#### A. Connecting to LocalShare:
-1. Ensure your receiving device (MacBook, iPad, Android phone, Windows laptop, etc.) is connected to the **same Wi-Fi network**.
-2. **Option 1 (Fastest for Phones & Tablets)**:
-   - On the host screen, click **"Connect Device"** or the Wi-Fi IP badge in the top navbar.
-   - Scan the QR code with your phone camera.
-3. **Option 2 (For Laptops & Desktops)**:
-   - Open Safari, Chrome, Edge, or Firefox.
-   - Enter the host machine's IP address and port (e.g. `http://192.168.1.45:3000`).
+#### Method A: Using the Recipient Selector Dropdown
+1. Above the upload area (or note input), tap the **`Recipient:`** dropdown pill.
+2. Under **Discovered Devices**, tap the recipient's device (e.g. `📱 iPhone` or `💻 Windows PC`).
+   - *(Optional)* You can also type any custom MAC address (e.g. `AA:BB:CC:DD:EE:FF`).
+3. The upload area will switch to **`🔒 Direct 1-to-1: [Recipient Name]`**.
+4. Drop or select your file. Only that specific device's MAC address will be authorized to view or download it.
 
-#### B. Receiving & Downloading Files:
-1. **Live Real-time Sync**: You do **not** need to refresh the page. As soon as the sender uploads a file, it will automatically appear in your file list.
-2. **One-Click Download**:
-   - Click the green **"Download"** button on any file card to save it directly to your device's `Downloads` folder.
-3. **In-Browser File Preview**:
-   - Click the **Eye icon (👁️)** on any file to preview it without downloading:
-     - **Images**: High-res view.
-     - **Videos**: Stream and play full video directly.
-     - **Audio**: Listen with built-in audio player.
-     - **PDFs**: Read documents inside the browser.
-     - **Code & Text**: View syntax-styled code and copy directly.
-4. **Copy Direct Download Link**:
-   - Click the **Copy link icon** to get a shareable direct URL (e.g. for sharing via Slack, chat, or curl/wget).
+#### Method B: Using the Device Manager Modal
+1. Tap the **Device Pill** in the top navbar (e.g. `💻 My Device`).
+2. View the list of all currently active Wi-Fi devices under **Active LAN Devices**.
+3. Tap **"Send Direct"** next to the target device.
+4. The file uploader is instantly configured to transfer privately to that device.
 
-#### C. Receiving & Copying Shared Notes:
-1. Open the **Quick Notes** tab.
-2. Click the **"Copy"** button next to any note snippet to copy its full contents to your clipboard in 1 click.
+---
+
+## 📂 Filtering & Managing Shared Content
+
+In the **Files** section, you can filter your view at any time using the filter tabs:
+
+- **All Files**: Displays all public files plus any 1-to-1 files sent to or by you.
+- **🌐 Public**: Shows only public files accessible to everyone.
+- **📥 Received (1-to-1)**: Shows private files sent directly to your device from another device.
+- **📤 Sent (1-to-1)**: Shows private files you sent to a specific target device.
 
 ---
 
 ## 📱 Real-World Use Case Scenarios
 
-| Scenario | Sender Steps | Receiver Steps |
-| :--- | :--- | :--- |
-| **📱 iPhone ➔ 💻 Windows PC** | Scan QR code on PC, tap upload box, pick photo/video. | File appears instantly on PC screen; click **Download** or **Preview**. |
-| **💻 Windows PC ➔ 🍏 Mac** | Drag file into LocalShare on Windows. | Open `http://<WINDOWS_IP>:3000` in Safari on Mac, click **Download**. |
-| **📋 Share URL / Wi-Fi Password** | Paste text into **Quick Notes** on any device and click **Share Note**. | On any other device, click **Copy** to paste into browser or settings. |
-| **🎥 Large 4K Video Transfer** | Drop large video into upload zone on PC. | Watch directly via **Preview** or download at full gigabit Wi-Fi speed. |
+| Scenario | Mode | Sender Steps | Receiver Steps |
+| :--- | :--- | :--- | :--- |
+| **📱 iPhone ➔ 💻 PC (Public)** | 🌐 Public | Scan QR code on PC, tap upload box, pick photo/video with Recipient set to `Everyone`. | File appears instantly on PC screen; click **Download** or **Preview**. |
+| **💻 PC ➔ 📱 Phone (1-to-1)** | 🔒 1-to-1 | In Recipient dropdown, select your phone. Drop file into upload box. | File pops up with a **🔔 Direct 1-to-1 Received** notification on your phone only. |
+| **📋 Private Password / API Key** | 🔒 1-to-1 | Switch to **Quick Notes**, set Recipient to recipient's device, click **Send 1-to-1**. | Note only appears on the recipient's screen; click **Copy**. |
+| **🎥 Large 4K Video Transfer** | 🌐 Public / 🔒 1-to-1 | Drop large video into upload zone on PC. | Watch directly via **Preview** or download at full gigabit Wi-Fi speed. |
 
 ---
 
@@ -155,7 +144,7 @@ LocalShare/
 ├── Dockerfile                  # Multi-stage Docker build
 ├── docker-compose.yml          # Docker compose configuration
 ├── package.json                # Dependencies & scripts
-├── next.config.mjs             # Next.js config (standalone mode)
+├── next.config.mjs             # Next.js config (standalone mode & 1GB limit)
 ├── tailwind.config.ts          # Tailwind styling & themes
 ├── tsconfig.json               # TypeScript config
 ├── run.bat                     # 1-click Windows launcher
@@ -169,21 +158,24 @@ LocalShare/
     │   ├── page.tsx            # Main application UI & real-time sync
     │   └── api/
     │       ├── network-info/   # Discovers active Wi-Fi LAN IP
-    │       ├── files/          # Upload & list files
+    │       ├── devices/        # Device heartbeat & MAC registration
+    │       ├── files/          # Upload & list files (with MAC access control)
     │       ├── files/[id]/     # Download & preview stream
-    │       ├── texts/          # Quick notes API
+    │       ├── texts/          # Quick notes API (with 1-to-1 targeting)
     │       └── events/         # Server-Sent Events (SSE)
     ├── components/
-    │   ├── Navbar.tsx          # Header with LAN IP badge
+    │   ├── Navbar.tsx          # Header with device indicator & LAN info
     │   ├── QRCodeModal.tsx     # Dynamic QR code generator
-    │   ├── FileUploader.tsx    # Drag-and-drop uploader with progress
-    │   ├── FileList.tsx        # Grid/list file manager
+    │   ├── DeviceManagerModal.tsx # LAN device discovery & 1-to-1 selector
+    │   ├── FileUploader.tsx    # Drag-and-drop uploader with recipient selector
+    │   ├── FileList.tsx        # Grid/list file manager with 1-to-1 filters
     │   ├── FilePreviewModal.tsx# In-browser media & code preview
-    │   ├── TextShare.tsx       # Quick clipboard sharing
+    │   ├── TextShare.tsx       # Quick clipboard sharing with recipient selector
     │   ├── StorageStats.tsx    # Storage usage widget
     │   └── Toast.tsx           # Notifications
     └── lib/
         ├── network.ts          # Network interface inspector
+        ├── devices.ts          # Device presence, ARP resolver, & MAC manager
         ├── storage.ts          # Storage engine & metadata manager
         ├── types.ts            # Client-safe types and formatters
         └── events.ts           # Event bus for SSE
