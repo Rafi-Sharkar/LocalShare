@@ -180,8 +180,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
   };
 
+  const myCleanMac = myDevice?.mac ? normalizeMac(myDevice.mac).toUpperCase() : '';
   const otherDevices = activeDevices.filter(
-    (d) => myDevice?.mac && d.mac !== myDevice.mac
+    (d) => myCleanMac && normalizeMac(d.mac).toUpperCase() !== myCleanMac
   );
 
   const handleApplyCustomMac = (e: React.FormEvent) => {
